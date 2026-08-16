@@ -1,13 +1,14 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>Mouse Maze Adventure</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
         body { text-align: center; font-family: 'Segoe UI', sans-serif; background: #e0f7fa; margin: 0; padding: 10px; touch-action: manipulation; overflow: hidden; }
         #canvas-container { margin: 10px auto; position: relative; display: inline-block; }
         canvas { border: 6px solid #455a64; background: white; border-radius: 12px; display: block; }
-        
+
         #winModal {
             display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             background: white; padding: 20px; border: 5px solid #ff5722; border-radius: 20px;
@@ -17,7 +18,7 @@
         .controls { display: grid; grid-template-columns: repeat(3, 75px); grid-gap: 10px; justify-content: center; margin-top: 10px; }
         .btn { width: 75px; height: 75px; background: #ff5722; color: white; border: none; border-radius: 15px; font-size: 35px; cursor: pointer; box-shadow: 0 4px #be360b; -webkit-tap-highlight-color: transparent; }
         .btn:active { box-shadow: 0 0 #be360b; transform: translateY(4px); }
-        
+
         @keyframes pulse-yellow {
             0% { background-color: #ff5722; }
             50% { background-color: #FFEB3B; box-shadow: 0 0 20px #FFEB3B; }
@@ -26,19 +27,27 @@
         .hint-flash { animation: pulse-yellow 0.5s infinite; }
 
         .up { grid-column: 2; } .left { grid-column: 1; } .down { grid-column: 2; } .right { grid-column: 3; }
-        
-        .menu-bar { display: flex; justify-content: center; gap: 10px; margin-bottom: 5px; }
-        button.action-btn { padding: 12px 20px; font-size: 18px; border: none; border-radius: 8px; cursor: pointer; color: white; font-weight: bold; background: #4CAF50; }
+
+        .menu-bar { display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 5px; }
+        button.action-btn, select.action-select { padding: 12px 20px; font-size: 18px; border: none; border-radius: 8px; cursor: pointer; color: white; font-weight: bold; background: #4CAF50; }
+        select.action-select { background: #0288d1; outline: none; -webkit-appearance: none; appearance: none; text-align: center; }
         .hint-btn { background: #FFC107 !important; color: #333 !important; }
     </style>
 </head>
 <body>
 
+    <audio id="soundKey" src="key.wav" preload="auto"></audio>
+    <audio id="soundCheese" src="cheese.wav" preload="auto"></audio>
+
     <div class="menu-bar">
         <button class="action-btn" onclick="initMaze()">Start / New Maze 🔄</button>
         <button class="action-btn hint-btn" onclick="showHint()">Hint? 💡</button>
+        <select id="soundModeSelect" class="action-select" onchange="changeSoundMode(this.value)">
+            <option value="quiet">🔊 Sound: Quiet</option>
+            <option value="normal">🔊 Sound: Normal</option>
+        </select>
     </div>
-    
+
     <div id="canvas-container">
         <canvas id="maze"></canvas>
         <div id="winModal">
@@ -61,12 +70,17 @@
         const ctx = canvas.getContext('2d');
         const modal = document.getElementById('winModal');
         const gridSize = 10;
-        const cellSize = 35; 
+        const cellSize = 35;
         const totalSize = gridSize * cellSize;
-        
+
         let grid, player, history, keys, hintPath, isShowingHint, idleTimer;
         let audioCtx = null;
         let keysFound = 0;
+        let soundMode = "quiet";
+
+        function changeSoundMode(mode) {
+            soundMode = mode;
+        }
 
         function initAudio() {
             if (!audioCtx) {
@@ -74,6 +88,23 @@
             }
             if (audioCtx.state === 'suspended') {
                 audioCtx.resume();
+            }
+        }
+
+        function playSoundEffect(type) {
+            if (soundMode === 'normal') {
+                const audioEl = type === 'key' ? document.getElementById('soundKey') : document.getElementById('soundCheese');
+                if (audioEl) {
+                    audioEl.currentTime = 0;
+                    audioEl.play().catch(e => console.log(e));
+                    return;
+                }
+            }
+            if (type === 'key') {
+                playBeep(1200, 0.1);
+            } else if (type === 'cheese') {
+                playBeep(800, 0.2);
+                setTimeout(() => playBeep(1000, 0.3), 150);
             }
         }
 
@@ -96,13 +127,13 @@
             canvas.width = totalSize;
             canvas.height = totalSize;
             grid = []; history = []; keys = []; keysFound = 0;
-            
+
             for (let r = 0; r < gridSize; r++) {
                 for (let c = 0; c < gridSize; c++) grid.push(new Cell(r, c));
             }
             generateMaze(grid[0]);
             player = { x: 0, y: 0 };
-            
+
             // Generate EXACTLY 5 keys along the path
             const path = findPathFrom(0,0);
             const keyInterval = Math.floor(path.length / 6);
@@ -112,7 +143,7 @@
                     keys.push({r: path[idx].r, c: path[idx].c, active: true});
                 }
             }
-            
+
             resetIdleTimer();
             draw();
         }
@@ -120,7 +151,7 @@
         class Cell {
             constructor(r, c) {
                 this.r = r; this.c = c;
-                this.walls = [true, true, true, true]; 
+                this.walls = [true, true, true, true];
                 this.visited = false;
             }
         }
@@ -139,7 +170,7 @@
         function getUnvisitedNeighbors(cell) {
             let neighbors = [];
             let { r, c } = cell;
-            let d = [[-1,0],[0,1],[1,0],[0,-1]]; 
+            let d = [[-1,0],[0,1],[1,0],[0,-1]];
             d.forEach(m => {
                 let nr = r + m[0], nc = c + m[1];
                 if(nr>=0 && nr<gridSize && nc>=0 && nc<gridSize) {
@@ -212,19 +243,19 @@
             if (dir === "ArrowRight" && !cell.walls[1]) { player.x++; moved = true; }
             if (dir === "ArrowDown" && !cell.walls[2]) { player.y++; moved = true; }
             if (dir === "ArrowLeft" && !cell.walls[3]) { player.x--; moved = true; }
-            
+
             if(moved) {
                 playBeep(600, 0.05); // Step sound
                 history.push({x: player.x, y: player.y});
                 keys.forEach(k => {
                     if(k.active && k.r === player.y && k.c === player.x) {
                         k.active = false; keysFound++;
-                        playBeep(1200, 0.1); // Key sound
+                        playSoundEffect('key'); // Key sound
                     }
                 });
                 clearHintEffects(); resetIdleTimer(); draw();
                 if (player.x === gridSize - 1 && player.y === gridSize - 1) {
-                    playBeep(800, 0.2); playBeep(1000, 0.3);
+                    playSoundEffect('cheese');
                     document.getElementById('keyScore').innerText = "Keys Found: " + keysFound + " / 5";
                     modal.style.display = "block";
                 }
@@ -254,7 +285,7 @@
 
         function resetIdleTimer() {
             clearTimeout(idleTimer);
-            idleTimer = setTimeout(() => { if(modal.style.display !== "block") showHint(); }, 20000); 
+            idleTimer = setTimeout(() => { if(modal.style.display !== "block") showHint(); }, 20000);
         }
 
         window.addEventListener('keydown', e => move(e.key));
