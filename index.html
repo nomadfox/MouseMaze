@@ -12,7 +12,7 @@
         #winModal {
             display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             background: white; padding: 20px; border: 5px solid #ff5722; border-radius: 20px;
-            box-shadow: 0 0 20px rgba(0,0,0,0.3); z-index: 10; width: 220px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3); z-index: 10; width: 250px;
         }
 
         .controls { display: grid; grid-template-columns: repeat(3, 75px); grid-gap: 10px; justify-content: center; margin-top: 10px; }
@@ -29,7 +29,7 @@
         .up { grid-column: 2; } .left { grid-column: 1; } .down { grid-column: 2; } .right { grid-column: 3; }
 
         .menu-bar { display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 5px; }
-        button.action-btn, select.action-select { padding: 12px 20px; font-size: 18px; border: none; border-radius: 8px; cursor: pointer; color: white; font-weight: bold; background: #4CAF50; }
+        .action-btn, select.action-select { padding: 12px 20px; font-size: 18px; border: none; border-radius: 8px; cursor: pointer; color: white; font-weight: bold; background: #4CAF50; }
         select.action-select { background: #0288d1; outline: none; -webkit-appearance: none; appearance: none; text-align: center; }
         .hint-btn { background: #FFC107 !important; color: #333 !important; }
     </style>
@@ -46,14 +46,21 @@
             <option value="quiet">🔊 Sound: Quiet</option>
             <option value="normal">🔊 Sound: Normal</option>
         </select>
+        <div id="timerDisplay" class="action-btn" style="background: #37474f; cursor: default; user-select: none;">⏱️ 0s</div>
     </div>
 
     <div id="canvas-container">
         <canvas id="maze"></canvas>
         <div id="winModal">
             <h2>YUMMY! 🧀</h2>
-            <p id="keyScore" style="font-size: 18px; font-weight: bold;"></p>
-            <p style="font-size: 40px; margin: 10px 0;">🐭🎉</p>
+            <p id="finalScore" style="font-size: 22px; font-weight: bold; color: #e65100; margin: 10px 0;"></p>
+            <div id="statsSummary" style="font-size: 15px; text-align: left; margin: 10px 15px; line-height: 1.5; color: #37474f;">
+                <p id="keyScore" style="margin: 4px 0; font-weight: bold;"></p>
+                <p id="timeTaken" style="margin: 4px 0;"></p>
+                <p id="movesSummary" style="margin: 4px 0;"></p>
+                <p id="missedMoves" style="margin: 4px 0;"></p>
+            </div>
+            <p style="font-size: 36px; margin: 5px 0;">🐭🎉</p>
             <button class="action-btn" onclick="initMaze()">Play Again!</button>
         </div>
     </div>
@@ -77,6 +84,10 @@
         let audioCtx = null;
         let keysFound = 0;
         let soundMode = "quiet";
+        let timerInterval = null;
+        let elapsedTime = 0;
+        let playerMoves = 0;
+        let minMoves = 0;
 
         function changeSoundMode(mode) {
             soundMode = mode;
@@ -124,6 +135,11 @@
             initAudio(); // Activate audio context on click
             modal.style.display = "none";
             clearHintEffects();
+            if (timerInterval) clearInterval(timerInterval);
+            elapsedTime = 0;
+            playerMoves = 0;
+            document.getElementById('timerDisplay').innerText = "⏱️ 0s";
+
             canvas.width = totalSize;
             canvas.height = totalSize;
             grid = []; history = []; keys = []; keysFound = 0;
@@ -136,6 +152,7 @@
 
             // Generate EXACTLY 5 keys along the path
             const path = findPathFrom(0,0);
+            minMoves = path.length > 0 ? path.length - 1 : 0;
             const keyInterval = Math.floor(path.length / 6);
             for(let i = 1; i <= 5; i++) {
                 let idx = i * keyInterval;
@@ -143,6 +160,11 @@
                     keys.push({r: path[idx].r, c: path[idx].c, active: true});
                 }
             }
+
+            timerInterval = setInterval(() => {
+                elapsedTime++;
+                document.getElementById('timerDisplay').innerText = `⏱️ ${elapsedTime}s`;
+            }, 1000);
 
             resetIdleTimer();
             draw();
@@ -245,6 +267,7 @@
             if (dir === "ArrowLeft" && !cell.walls[3]) { player.x--; moved = true; }
 
             if(moved) {
+                playerMoves++;
                 playBeep(600, 0.05); // Step sound
                 history.push({x: player.x, y: player.y});
                 keys.forEach(k => {
@@ -255,8 +278,17 @@
                 });
                 clearHintEffects(); resetIdleTimer(); draw();
                 if (player.x === gridSize - 1 && player.y === gridSize - 1) {
+                    if (timerInterval) clearInterval(timerInterval);
                     playSoundEffect('cheese');
-                    document.getElementById('keyScore').innerText = "Keys Found: " + keysFound + " / 5";
+                    let missedMoves = Math.max(0, playerMoves - minMoves);
+                    let baseScore = 1000;
+                    let score = Math.max(0, baseScore - (elapsedTime * 5) - (missedMoves * 20) + (keysFound * 50));
+
+                    document.getElementById('finalScore').innerText = "Score: " + score;
+                    document.getElementById('keyScore').innerText = "🔑 Keys Found: " + keysFound + " / 5";
+                    document.getElementById('timeTaken').innerText = "⏱️ Time: " + elapsedTime + "s";
+                    document.getElementById('movesSummary').innerText = "👟 Moves: " + playerMoves + " (Min: " + minMoves + ")";
+                    document.getElementById('missedMoves').innerText = "❌ Missed Moves: " + missedMoves;
                     modal.style.display = "block";
                 }
             }
